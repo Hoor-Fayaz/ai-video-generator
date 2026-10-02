@@ -806,6 +806,22 @@ elif nav_selection == "Create Video":
                 </div>
                 """, unsafe_allow_html=True)
 
+            st.markdown("##### ⚙️ Visual & Video Engine Selection")
+            vp_selected = st.selectbox(
+                "Visual & Video Provider Engine",
+                ["auto", "pexels", "replicate_video", "replicate", "huggingface", "mock"],
+                format_func=lambda x: {
+                    "auto": "✨ Auto (High-End Video Clips & Dynamic Visuals)",
+                    "pexels": "🎥 Pexels HD (Authentic 1080p/4K Stock Video Clips)",
+                    "replicate_video": "🤖 Replicate AI Video (Full Motion Video Clips)",
+                    "replicate": "🎨 Replicate Flux (Ultra-HD Imagery + Cinematic Camera Motion)",
+                    "huggingface": "⚡ Hugging Face SDXL (Free Cloud Inference + Cinematic Motion)",
+                    "mock": "🧪 Development Mock (Fast Local Test)",
+                }.get(x, x),
+                key=f"vp_choice_{vid_id}",
+                help="Select your media source: Authentic HD video clips, AI video generation, or Ultra-HD imagery with cinematic camera motion."
+            )
+
             b1, b2 = st.columns([1, 2])
             with b1:
                 if st.button("← Back to Concept", use_container_width=True):
@@ -814,7 +830,8 @@ elif nav_selection == "Create Video":
             with b2:
                 if st.button("🎬 Generate Full Video Now", type="primary", use_container_width=True):
                     with st.spinner("Starting multi-stage video generation pipeline..."):
-                        gen_res = requests.post(f"{API_URL}/videos/{vid_id}/generate", headers=admin_headers, timeout=10)
+                        gen_payload = {"visual_provider": vp_selected}
+                        gen_res = requests.post(f"{API_URL}/videos/{vid_id}/generate", json=gen_payload, headers=admin_headers, timeout=10)
                         if gen_res.status_code == 200:
                             st.session_state["creation_step"] = 4
                             st.success("Generation pipeline initiated!")
@@ -923,7 +940,7 @@ elif nav_selection == "My Videos":
                 """, unsafe_allow_html=True)
 
         with col_details:
-            t_meta, t_pub, t_scenes, t_qa = st.tabs(["📝 Metadata & Pipeline", "🚀 Publication Status", "🖼️ Scene Visuals", "🛡️ Audit & QA"])
+            t_meta, t_pub, t_export, t_scenes, t_qa = st.tabs(["📝 Metadata & Pipeline", "🚀 Publication Status", "📲 1-Click Platform Hub", "🖼️ Scene Visuals", "🛡️ Audit & QA"])
 
             with t_meta:
                 plan = v_data.get("plan") or {}
@@ -990,6 +1007,97 @@ elif nav_selection == "My Videos":
 
                         st.markdown("</div>", unsafe_allow_html=True)
 
+            with t_export:
+                st.markdown("##### 📲 1-Click Platform Publisher & Exporter")
+                st.markdown("<p class='secondary-text'>Directly upload or export optimized video & tailored metadata for YouTube Shorts, TikTok, and Instagram Reels.</p>", unsafe_allow_html=True)
+
+                if v_path and os.path.exists(v_path):
+                    with open(v_path, "rb") as f_vid:
+                        st.download_button(
+                            label=f"⬇️ Download Video #{vid_id} MP4 (1080x1920 Vertical HD)",
+                            data=f_vid,
+                            file_name=f"ai_video_{vid_id}.mp4",
+                            mime="video/mp4",
+                            type="primary",
+                            use_container_width=True
+                        )
+
+                col_ep1, col_ep2, col_ep3 = st.columns(3)
+
+                plan = v_data.get("plan") or {}
+                vid_title = v_data.get("title") or plan.get("title") or f"Video #{vid_id}"
+                vid_caption = v_data.get("caption") or plan.get("caption") or ""
+                vid_tags = v_data.get("hashtags") or plan.get("hashtags") or []
+                clean_tags = " ".join([f"#{t.lstrip('#')}" for t in vid_tags])
+
+                # 1. YouTube Shorts
+                with col_ep1:
+                    st.markdown("""
+                    <div class="studio-card">
+                        <div style="font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                            <span>▶️</span> YouTube Shorts
+                        </div>
+                        <div class="secondary-text" style="font-size: 0.78rem; margin: 4px 0 12px 0;">9:16 Vertical &bull; Max 60s</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    yt_title_short = f"{vid_title} #Shorts"[:100]
+                    st.text_input("Shorts Title", value=yt_title_short, key=f"ep_yt_t_{vid_id}")
+                    yt_desc = f"{vid_caption}\n\n{clean_tags}\n\nGenerated with AI Video Studio"
+                    st.text_area("Description & Tags", value=yt_desc, height=110, key=f"ep_yt_d_{vid_id}")
+                    st.link_button("Upload to YouTube Studio ↗", "https://studio.youtube.com/channel/UC/videos/upload?d=bu", use_container_width=True)
+                    if st.button("⚡ Publish to YouTube", key=f"direct_yt_pub_{vid_id}", use_container_width=True):
+                        with st.spinner("Publishing to YouTube..."):
+                            resp = requests.post(f"{API_URL}/videos/{vid_id}/approve-and-publish", json={"selected_platforms": ["youtube"], "youtube_privacy": "public"}, headers=admin_headers)
+                            if resp.status_code == 200:
+                                st.success("YouTube publishing initiated!")
+                                st.rerun()
+                            else:
+                                st.error(resp.text)
+
+                # 2. TikTok
+                with col_ep2:
+                    st.markdown("""
+                    <div class="studio-card">
+                        <div style="font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                            <span>🎵</span> TikTok
+                        </div>
+                        <div class="secondary-text" style="font-size: 0.78rem; margin: 4px 0 12px 0;">9:16 Full Screen &bull; Viral Hashtags</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    tt_post_caption = f"{vid_caption} {clean_tags}"[:2200]
+                    st.text_area("TikTok Caption & Hashtags", value=tt_post_caption, height=160, key=f"ep_tt_c_{vid_id}")
+                    st.link_button("Open TikTok Creator Upload ↗", "https://www.tiktok.com/creator-center/upload", use_container_width=True)
+                    if st.button("⚡ Publish to TikTok", key=f"direct_tt_pub_{vid_id}", use_container_width=True):
+                        with st.spinner("Publishing to TikTok..."):
+                            resp = requests.post(f"{API_URL}/videos/{vid_id}/approve-and-publish", json={"selected_platforms": ["tiktok"], "tiktok_privacy": "SELF_ONLY" if is_tiktok_sandbox_or_unaudited() else "PUBLIC_TO_EVERYONE"}, headers=admin_headers)
+                            if resp.status_code == 200:
+                                st.success("TikTok publishing initiated!")
+                                st.rerun()
+                            else:
+                                st.error(resp.text)
+
+                # 3. Instagram Reels
+                with col_ep3:
+                    st.markdown("""
+                    <div class="studio-card">
+                        <div style="font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                            <span>📸</span> Instagram Reels
+                        </div>
+                        <div class="secondary-text" style="font-size: 0.78rem; margin: 4px 0 12px 0;">Reels Feed &bull; 1080x1920</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    ig_post_caption = f"{vid_title}\n.\n{vid_caption}\n.\n{clean_tags}"[:2200]
+                    st.text_area("Instagram Reel Caption", value=ig_post_caption, height=160, key=f"ep_ig_c_{vid_id}")
+                    st.link_button("Open Instagram Web ↗", "https://www.instagram.com/", use_container_width=True)
+                    if st.button("⚡ Publish to Instagram", key=f"direct_ig_pub_{vid_id}", use_container_width=True):
+                        with st.spinner("Publishing to Instagram Reels..."):
+                            resp = requests.post(f"{API_URL}/videos/{vid_id}/approve-and-publish", json={"selected_platforms": ["instagram"]}, headers=admin_headers)
+                            if resp.status_code == 200:
+                                st.success("Instagram publishing initiated!")
+                                st.rerun()
+                            else:
+                                st.error(resp.text)
+
             with t_scenes:
                 st.markdown("##### 🖼️ Scene Prompts & Visual Frames")
                 plan = v_data.get("plan") or {}
@@ -997,19 +1105,31 @@ elif nav_selection == "My Videos":
                 if not scenes:
                     st.caption("No scene breakdown available.")
                 else:
-                    for sc in scenes:
-                        sc_idx = sc.get("scene_index", 1)
+                    for loop_i, sc in enumerate(scenes):
+                        sc_idx = sc.get("scene_number") or sc.get("scene_index") or (loop_i + 1)
                         c_sc1, c_sc2 = st.columns([3, 1])
                         with c_sc1:
                             st.markdown(f"**Scene {sc_idx}:** {sc.get('narration', '')}")
-                            st.caption(f"Prompt: {sc.get('visual_prompt', '')}")
+                            vp_text = sc.get("visual_prompt") or sc.get("visual_description", "")
+                            media_type = sc.get("media_type", "")
+                            if vp_text:
+                                st.caption(f"🎬 {media_type.upper() or 'VISUAL'}: {vp_text}")
+                            img_path = sc.get("image_path") or sc.get("media_path")
+                            if img_path and os.path.exists(img_path):
+                                ext = os.path.splitext(img_path)[1].lower()
+                                if ext in [".mp4", ".mov", ".webm"]:
+                                    st.video(img_path)
+                                elif ext in [".png", ".jpg", ".jpeg", ".webp"]:
+                                    st.image(img_path, use_container_width=True)
                         with c_sc2:
-                            if st.button(f"🔄 Redo Visual", key=f"redo_sc_{sc_idx}_{vid_id}"):
-                                with st.spinner("Regenerating scene image..."):
+                            if st.button(f"🔄 Redo Visual", key=f"redo_sc_{vid_id}_{loop_i}"):
+                                with st.spinner("Regenerating scene visual..."):
                                     res = requests.post(f"{API_URL}/videos/{vid_id}/scenes/{sc_idx}/regenerate-visual", headers=admin_headers)
                                     if res.status_code == 200:
                                         st.success("Regenerated visual!")
                                         st.rerun()
+                                    else:
+                                        st.error(f"Failed: {res.text[:200]}")
                         st.markdown("<hr style='border-color: #2B2B35; margin: 8px 0;'>", unsafe_allow_html=True)
 
             with t_qa:
@@ -1136,19 +1256,20 @@ elif nav_selection == "Review & Approvals":
                     
                     # Connected accounts for display
                     accounts = fetch_accounts()
-                    real_tt = next((a for a in accounts if a.get("platform") == "tiktok" and not a.get("is_mock")), None)
                     real_yt = next((a for a in accounts if a.get("platform") == "youtube" and not a.get("is_mock")), None)
+                    real_tt = next((a for a in accounts if a.get("platform") == "tiktok" and not a.get("is_mock")), None)
+                    real_ig = next((a for a in accounts if a.get("platform") == "instagram" and not a.get("is_mock")), None)
 
-                    c_sel1, c_sel2 = st.columns(2)
+                    c_sel1, c_sel2, c_sel3 = st.columns(3)
                     with c_sel1:
-                        sel_yt = st.checkbox("▶️ Publish to YouTube Shorts", value=True, key=f"rev_yt_{p_id}")
-                        yt_acct_name = real_yt.get("account_name", "AI Video Studio") if real_yt else "No active account"
+                        sel_yt = st.checkbox("▶️ YouTube Shorts", value=True, key=f"rev_yt_{p_id}")
+                        yt_acct_name = real_yt.get("account_name", "AI Video Studio") if real_yt else "Active / Sandbox"
                         st.caption(f"Channel: **{yt_acct_name}**")
                         yt_priv = st.selectbox("YouTube Visibility", ["public", "unlisted", "private"], index=0, key=f"rev_yt_priv_{p_id}")
 
                     with c_sel2:
-                        sel_tt = st.checkbox("🎵 Publish to TikTok", value=True, key=f"rev_tt_{p_id}")
-                        tt_acct_name = real_tt.get("account_handle", "@jannah_chic1") if real_tt else "No active account"
+                        sel_tt = st.checkbox("🎵 TikTok", value=True, key=f"rev_tt_{p_id}")
+                        tt_acct_name = real_tt.get("account_handle", "@jannah_chic1") if real_tt else "Active / Sandbox"
                         st.caption(f"Account: **{tt_acct_name}**")
                         
                         is_tt_sb = is_tiktok_sandbox_or_unaudited()
@@ -1159,13 +1280,22 @@ elif nav_selection == "Review & Approvals":
                             tt_priv_opts = ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "SELF_ONLY"]
                         tt_priv = st.selectbox("TikTok Privacy", tt_priv_opts, index=0, key=f"rev_tt_priv_{p_id}")
 
-                    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+                    with c_sel3:
+                        sel_ig = st.checkbox("📸 Instagram Reels", value=True, key=f"rev_ig_{p_id}")
+                        ig_acct_name = real_ig.get("account_handle", "@aistudio.reels") if real_ig else "Active / Sandbox"
+                        st.caption(f"Account: **{ig_acct_name}**")
+                        ig_feed = st.checkbox("Share to Feed", value=True, key=f"rev_ig_feed_{p_id}")
+
+                    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+                    sb_mode = st.toggle("🧪 Safe Sandbox Test Mode (Verify flow without consuming official API quotas)", value=False, key=f"sb_mode_{p_id}")
+                    st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
                     
                     b_app, b_rej = st.columns([2, 1])
                     with b_app:
                         selected_plats = []
                         if sel_yt: selected_plats.append("youtube")
                         if sel_tt: selected_plats.append("tiktok")
+                        if sel_ig: selected_plats.append("instagram")
 
                         if st.button("✅ Approve & Publish Now", key=f"btn_app_{p_id}", type="primary", use_container_width=True, disabled=not is_admin or not selected_plats):
                             with st.spinner(f"Approving and publishing to {', '.join(selected_plats)}..."):
@@ -1173,7 +1303,8 @@ elif nav_selection == "Review & Approvals":
                                     "selected_platforms": selected_plats,
                                     "youtube_privacy": yt_priv,
                                     "tiktok_privacy": tt_priv,
-                                    "use_sandbox": False
+                                    "instagram_share_to_feed": ig_feed,
+                                    "use_sandbox": sb_mode
                                 }
                                 try:
                                     resp = requests.post(f"{API_URL}/videos/{p_id}/approve-and-publish", json=payload, headers=admin_headers, timeout=60)
@@ -1321,7 +1452,7 @@ elif nav_selection == "Publication History":
 # ---------------------------------------------------------------------- #
 elif nav_selection == "Social Accounts":
     st.markdown("## 🌐 Social Accounts")
-    st.markdown("<p class='secondary-text'>Manage official developer OAuth integrations for direct, $0-cost publishing to TikTok, YouTube, and Instagram.</p>", unsafe_allow_html=True)
+    st.markdown("<p class='secondary-text'>Manage official developer OAuth integrations for direct publishing to TikTok, YouTube, and Instagram. Supports OAuth 2.0, Direct API Tokens, and Safe Sandbox Mode.</p>", unsafe_allow_html=True)
 
     accounts = fetch_accounts()
     
@@ -1329,75 +1460,135 @@ elif nav_selection == "Social Accounts":
 
     # 1. TikTok Card
     with col_t:
-        tt_acc = next((a for a in accounts if a.get("platform") == "tiktok" and not a.get("is_mock")), None)
-        st.markdown(f"""
-        <div class="studio-card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="font-weight: 800; font-size: 1.1rem;">🎵 TikTok</div>
-                <span class="status-badge {'badge-approved' if tt_acc else 'badge-draft'}">{'CONNECTED' if tt_acc else 'DISCONNECTED'}</span>
-            </div>
-            <div style="margin-top: 10px;">
-                <div style="font-size: 0.88rem; font-weight: 600;">{tt_acc.get('account_handle', 'No account connected') if tt_acc else 'Direct Post v2'}</div>
-                <div class="secondary-text" style="font-size: 0.78rem;">{'Real Account &bull; Sandbox Mode' if tt_acc else 'Official Content Posting API'}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        tt_real = next((a for a in accounts if a.get("platform") == "tiktok" and not a.get("is_mock")), None)
 
-        if tt_acc:
-            if st.button("Disconnect TikTok", key=f"disc_tt_{tt_acc.get('id')}", use_container_width=True):
-                requests.delete(f"{API_URL}/social/accounts/{tt_acc.get('id')}", headers=admin_headers)
+        if tt_real:
+            st.markdown(f"""
+            <div class="studio-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 800; font-size: 1.1rem;">🎵 TikTok</div>
+                    <span class="status-badge badge-approved">REAL CONNECTED</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <div style="font-size: 0.92rem; font-weight: 700; color: #35C98B;">{tt_real.get('account_handle', '')}</div>
+                    <div class="secondary-text" style="font-size: 0.78rem;">{tt_real.get('account_name', 'TikTok Creator Account')}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Disconnect Real TikTok", key=f"disc_tt_{tt_real.get('id')}", use_container_width=True):
+                requests.delete(f"{API_URL}/social/accounts/{tt_real.get('id')}", headers=admin_headers)
                 st.rerun()
         else:
-            auth_url = f"{API_URL}/social/oauth/authorize/tiktok"
-            st.link_button("Connect TikTok OAuth ↗", auth_url, type="primary", use_container_width=True)
+            st.markdown("""
+            <div class="studio-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 800; font-size: 1.1rem;">🎵 TikTok</div>
+                    <span class="status-badge badge-draft">NOT CONNECTED</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <div style="font-size: 0.88rem; font-weight: 600;">No Account Connected</div>
+                    <div class="secondary-text" style="font-size: 0.78rem;">Connect your account for automated publishing.</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            auth_url = f"{API_URL}/social/oauth/login/tiktok"
+            st.link_button("🔗 Connect Real TikTok ↗", auth_url, type="primary", use_container_width=True)
+
+        with st.expander("🔑 Direct Token / Cookie Connect"):
+            tt_tok = st.text_input("TikTok Access Token", type="password", key="tt_manual_tok")
+            if st.button("Save TikTok Token", key="save_tt_tok_btn", use_container_width=True):
+                if tt_tok:
+                    requests.post(f"{API_URL}/social/accounts/manual-token", json={"platform": "tiktok", "access_token": tt_tok})
+                    st.success("Token saved!")
+                    st.rerun()
 
     # 2. YouTube Card
     with col_y:
-        yt_acc = next((a for a in accounts if a.get("platform") == "youtube" and not a.get("is_mock")), None)
-        st.markdown(f"""
-        <div class="studio-card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="font-weight: 800; font-size: 1.1rem;">▶️ YouTube</div>
-                <span class="status-badge {'badge-approved' if yt_acc else 'badge-draft'}">{'CONNECTED' if yt_acc else 'DISCONNECTED'}</span>
-            </div>
-            <div style="margin-top: 10px;">
-                <div style="font-size: 0.88rem; font-weight: 600;">{yt_acc.get('account_name', 'No channel connected') if yt_acc else 'YouTube Data API v3'}</div>
-                <div class="secondary-text" style="font-size: 0.78rem;">{yt_acc.get('account_handle', '') if yt_acc else 'Google OAuth 2.0 Direct'}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        yt_real = next((a for a in accounts if a.get("platform") == "youtube" and not a.get("is_mock")), None)
 
-        if yt_acc:
-            if st.button("Disconnect YouTube", key=f"disc_yt_{yt_acc.get('id')}", use_container_width=True):
-                requests.delete(f"{API_URL}/social/accounts/{yt_acc.get('id')}", headers=admin_headers)
+        if yt_real:
+            st.markdown(f"""
+            <div class="studio-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 800; font-size: 1.1rem;">▶️ YouTube</div>
+                    <span class="status-badge badge-approved">REAL CONNECTED</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <div style="font-size: 0.92rem; font-weight: 700; color: #35C98B;">{yt_real.get('account_name', '')}</div>
+                    <div class="secondary-text" style="font-size: 0.78rem;">{yt_real.get('account_handle', 'Google Verified Channel')}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Disconnect Real YouTube", key=f"disc_yt_{yt_real.get('id')}", use_container_width=True):
+                requests.delete(f"{API_URL}/social/accounts/{yt_real.get('id')}", headers=admin_headers)
                 st.rerun()
         else:
-            auth_url = f"{API_URL}/social/oauth/authorize/youtube"
-            st.link_button("Connect YouTube OAuth ↗", auth_url, type="primary", use_container_width=True)
+            st.markdown("""
+            <div class="studio-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 800; font-size: 1.1rem;">▶️ YouTube</div>
+                    <span class="status-badge badge-draft">NOT CONNECTED</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <div style="font-size: 0.88rem; font-weight: 600;">No Channel Connected</div>
+                    <div class="secondary-text" style="font-size: 0.78rem;">Sign in with Google to link your YouTube channel.</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            auth_url = f"{API_URL}/social/oauth/login/youtube"
+            st.link_button("🔗 Connect Real YouTube Channel ↗", auth_url, type="primary", use_container_width=True)
+
+        with st.expander("🔑 Direct Token Connect"):
+            yt_tok = st.text_input("YouTube OAuth Access Token", type="password", key="yt_manual_tok")
+            if st.button("Save YouTube Token", key="save_yt_tok_btn", use_container_width=True):
+                if yt_tok:
+                    requests.post(f"{API_URL}/social/accounts/manual-token", json={"platform": "youtube", "access_token": yt_tok})
+                    st.success("Token saved!")
+                    st.rerun()
 
     # 3. Instagram Card
     with col_i:
-        ig_acc = next((a for a in accounts if a.get("platform") == "instagram" and not a.get("is_mock")), None)
-        st.markdown(f"""
-        <div class="studio-card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="font-weight: 800; font-size: 1.1rem;">📸 Instagram</div>
-                <span class="status-badge {'badge-approved' if ig_acc else 'badge-draft'}">{'CONNECTED' if ig_acc else 'DISCONNECTED'}</span>
-            </div>
-            <div style="margin-top: 10px;">
-                <div style="font-size: 0.88rem; font-weight: 600;">{ig_acc.get('account_name', 'No account connected') if ig_acc else 'Meta Graph Content API'}</div>
-                <div class="secondary-text" style="font-size: 0.78rem;">Instagram Reels Container</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        ig_real = next((a for a in accounts if a.get("platform") == "instagram" and not a.get("is_mock")), None)
 
-        if ig_acc:
-            if st.button("Disconnect Instagram", key=f"disc_ig_{ig_acc.get('id')}", use_container_width=True):
-                requests.delete(f"{API_URL}/social/accounts/{ig_acc.get('id')}", headers=admin_headers)
+        if ig_real:
+            st.markdown(f"""
+            <div class="studio-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 800; font-size: 1.1rem;">📸 Instagram</div>
+                    <span class="status-badge badge-approved">REAL CONNECTED</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <div style="font-size: 0.92rem; font-weight: 700; color: #35C98B;">{ig_real.get('account_handle', '')}</div>
+                    <div class="secondary-text" style="font-size: 0.78rem;">{ig_real.get('account_name', 'Meta Instagram Business')}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Disconnect Real Instagram", key=f"disc_ig_{ig_real.get('id')}", use_container_width=True):
+                requests.delete(f"{API_URL}/social/accounts/{ig_real.get('id')}", headers=admin_headers)
                 st.rerun()
         else:
-            auth_url = f"{API_URL}/social/oauth/authorize/instagram"
-            st.link_button("Connect Instagram ↗", auth_url, type="primary", use_container_width=True)
+            st.markdown("""
+            <div class="studio-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 800; font-size: 1.1rem;">📸 Instagram</div>
+                    <span class="status-badge badge-draft">NOT CONNECTED</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <div style="font-size: 0.88rem; font-weight: 600;">No Account Connected</div>
+                    <div class="secondary-text" style="font-size: 0.78rem;">Link Meta Graph API or paste Page Access Token.</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            auth_url = f"{API_URL}/social/oauth/login/instagram"
+            st.link_button("🔗 Connect Real Instagram ↗", auth_url, type="primary", use_container_width=True)
+
+        with st.expander("🔑 Direct Token Connect (Meta Graph)"):
+            ig_tok = st.text_input("Instagram / Page Access Token", type="password", key="ig_manual_tok")
+            if st.button("Save Instagram Token", key="save_ig_tok_btn", use_container_width=True):
+                if ig_tok:
+                    requests.post(f"{API_URL}/social/accounts/manual-token", json={"platform": "instagram", "access_token": ig_tok})
+                    st.success("Token saved!")
+                    st.rerun()
 
     st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
     st.markdown("#### 🔒 Security & Credential Protection")

@@ -259,6 +259,12 @@ def _normalize_scene(raw: dict, default_style: str = "realistic", fallback_topic
     objects = raw.get("objects", "")
     camera_style = raw.get("camera_style", "medium shot, eye level")
 
+    # Generate optimized stock query and motion prompt for video clips
+    topic_kw = " ".join([w for w in (topic or "").split() if len(w) > 2][:2])
+    claim_kw = " ".join([w for w in (claim or "").split() if len(w) > 3][:2])
+    clean_stock = raw.get("stock_query") or f"{topic_kw} {claim_kw}".strip() or topic or "nature"
+    clean_motion = raw.get("video_motion_prompt") or f"Cinematic {camera_style}, 4k ultra high definition documentary, perfectly stable framing, smooth motion, {visual_prompt}"
+
     return Scene(
         scene_number=scene_num,
         duration=int(duration),
@@ -276,6 +282,8 @@ def _normalize_scene(raw: dict, default_style: str = "realistic", fallback_topic
         claim=claim,
         explanation=explanation,
         example=example,
+        stock_query=clean_stock,
+        video_motion_prompt=clean_motion,
     )
 
 
@@ -846,25 +854,139 @@ TOPIC_KNOWLEDGE_BASE: Dict[str, Dict[str, Any]] = {
             }
         ],
         "closing": "Robotic rovers combine rocket-crane landings, laser spectroscopy, and autonomous navigation to explore ancient worlds."
+    },
+    "relaxing nature": {
+        "title": "3 Powerful Ways Nature Calms Your Nervous System",
+        "topic": "Nature and Stress Relief",
+        "hook": "Immersing yourself in natural environments triggers rapid biological shifts that measurably reduce stress.",
+        "facts": [
+            {
+                "claim": "Tree Phytoncides Lower Cortisol and Blood Pressure",
+                "explanation": "Evergreen trees release airborne antimicrobial organic compounds called phytoncides that activate the human parasympathetic nervous system.",
+                "example": "Studies in environmental medicine demonstrate that a 20-minute forest immersion reduces salivary cortisol by over 16 percent.",
+                "narration": "Trees and evergreen plants release natural airborne organic compounds called phytoncides. When inhaled during a walk in the woods, these aerosols stimulate parasympathetic nerves, lowering the stress hormone cortisol by up to sixteen percent.",
+                "visual_prompt": "Sunbeams breaking through towering cedar and pine trees in a tranquil green mossy forest, soft golden mist drifting between tree trunks, cinematic vertical 9:16",
+                "environment": "Tranquil green mossy cedar and pine forest with sunbeams",
+                "characters": "Towering forest trees and gentle morning mist",
+                "objects": "Sunbeams, green moss, cedar pine needles, soft forest haze",
+                "camera_style": "Slow upward tilting shot through majestic sunlit pine branches",
+                "stock_query": "forest sunlight mist"
+            },
+            {
+                "claim": "Natural Fractal Patterns Induce Calming Alpha Brainwaves",
+                "explanation": "Self-similar geometric repeating patterns in tree canopies, leaves, and flowing water resonate with human visual cortex processing, stimulating relaxation.",
+                "example": "Electroencephalogram monitoring shows that viewing natural fractals increases alpha wave power by up to 26 percent.",
+                "narration": "The branching patterns in tree branches, ocean waves, and clouds form self-similar fractal geometries. Visual neuroscientists discovered that watching these natural fractals induces relaxed alpha brainwave activity, reducing mental exhaustion effortlessly.",
+                "visual_prompt": "Cinematic slow-motion view of crystal clear mountain stream waters flowing smoothly over polished river stones, lush ferns along the water bank, vertical 9:16 composition",
+                "environment": "Serene alpine mountain brook with crystal clear running water",
+                "characters": "The flowing mountain stream and lush riverbank ferns",
+                "objects": "Polished river stones, clear rippling water, emerald fern fronds",
+                "camera_style": "Low-angle smooth tracking shot alongside flowing clear water",
+                "stock_query": "mountain stream water"
+            },
+            {
+                "claim": "Moving Water Generates Mood-Boosting Negative Air Ions",
+                "explanation": "The Lenard effect occurs when turbulent rushing water collides with rock surfaces, aerosolizing billions of negative ions that enter the bloodstream.",
+                "example": "High concentrations of atmospheric negative ions have been shown to elevate brain serotonin turnover within 15 minutes of exposure.",
+                "narration": "Waterfalls, ocean surf, and mountain streams break water droplets apart, releasing billions of negative air ions into the breeze. These ions enhance cellular oxygen absorption and trigger the release of mood-lifting serotonin in the brain.",
+                "visual_prompt": "Breathtaking cascade of a pristine natural waterfall crashing into a turquoise forest pool, delicate water spray glistening in sunlight, vertical 9:16 composition",
+                "environment": "Pristine tropical forest waterfall with turquoise plunge pool",
+                "characters": "The cascading waterfall and shimmering spray",
+                "objects": "Crashing waterfall torrent, sunlit mist spray, turquoise pool ripples",
+                "camera_style": "Majestic wide shot tilting down the length of the waterfall",
+                "stock_query": "waterfall cascade pool"
+            },
+            {
+                "claim": "The Biophilia Effect Calms Heart Rate Variability",
+                "explanation": "Evolutionary adaptations hardwire human neurological architecture to interpret vibrant vegetation and unpolluted landscapes as safe survival habitats.",
+                "example": "Clinical trials demonstrate that viewing open biodiverse green spaces reduces sympathetic cardiovascular fight-or-flight signaling within three minutes.",
+                "narration": "Evolutionary biology shows that human physiology is naturally tuned to thriving green scenery. Merely resting your gaze upon open natural landscapes stabilizes heart rate variability and shuts down anxious sympathetic fight-or-flight responses.",
+                "visual_prompt": "Cinematic wide landscape view of rolling vibrant green meadows bordered by wildflowers swaying gently under a warm sunlit summer breeze, vertical 9:16",
+                "environment": "Expansive sunny green meadow with colorful summer wildflowers",
+                "characters": "Rolling hills of lush green grass and vibrant flowers",
+                "objects": "Wildflower blossoms, waving green grass, warm sun flare",
+                "camera_style": "Smooth aerial glide over blooming wildflower meadow",
+                "stock_query": "green meadow wildflowers"
+            },
+            {
+                "claim": "Morning Sunlight Exposure Synchronizes Circadian Rhythms",
+                "explanation": "Full-spectrum natural daylight stimulates intrinsically photosensitive retinal ganglion cells that calibrate the hypothalamic suprachiasmatic nucleus.",
+                "example": "Natural morning outdoor light delivers over 10,000 lux compared to typical indoor lighting of 500 lux, optimizing cortisol awakening curves.",
+                "narration": "Natural morning sunlight filtering through the open sky stimulates retinal ganglion cells that reset your master circadian clock, boosting daytime mental focus while priming your body for deep restorative sleep at night.",
+                "visual_prompt": "Majestic golden sunrise breaking over misty mountain ridges with gentle clouds floating through alpine pine valleys, warm radiant light, vertical 9:16",
+                "environment": "High mountain ridge looking toward a glorious golden sunrise",
+                "characters": "Golden sun rays piercing through alpine mist",
+                "objects": "Sunburst, misty mountain silhouettes, floating dawn clouds",
+                "camera_style": "Cinematic slow forward dolly toward the glowing mountain sunrise",
+                "stock_query": "sunrise mountain clouds"
+            }
+        ],
+        "closing": "Scientific evidence confirms that natural environments are an essential biological necessity for calming the human nervous system."
+    },
+    "walking benefits": {
+        "title": "3 Transformative Health Benefits of Daily Walking",
+        "topic": "Daily Walking",
+        "hook": "Walking is the single most accessible biological intervention for cardiovascular health and cognitive longevity.",
+        "facts": [
+            {
+                "claim": "Walking Stimulates Hippocampal Neurogenesis and Brain Plasticity",
+                "explanation": "Aerobic walking enhances cerebral blood flow and releases brain-derived neurotrophic factor, triggering neurogenesis in memory centers.",
+                "example": "Neuroimaging studies show that consistent brisk walking expands hippocampal volume by two percent annually, counteracting age-related atrophy.",
+                "narration": "A brisk daily walk increases blood flow directly to the brain, releasing neurotrophic factors that stimulate the birth of new neurons in the hippocampus, dramatically improving memory and daily focus.",
+                "visual_prompt": "Athletic person walking briskly along a peaceful sunlit path through a lush green city park, golden morning light filtering through leaves, vertical 9:16",
+                "environment": "Lush green urban park with winding sunlit cobblestone walking paths",
+                "characters": "Active individual walking briskly with energetic posture",
+                "objects": "Dappled tree shadows, park path, vibrant green lawns",
+                "camera_style": "Medium side-tracking shot keeping pace with the walker",
+                "stock_query": "person walking park"
+            },
+            {
+                "claim": "Calf Muscles Act as Secondary Venous Hearts",
+                "explanation": "The skeletal muscle pump of the gastrocnemius and soleus muscles compresses deep lower-limb veins, driving venous return against gravity.",
+                "example": "Rhythmic walking contractions generate pressures exceeding 100 millimeters of mercury inside intramuscular veins, preventing venous pooling.",
+                "narration": "With every step, rhythmic calf contractions compress deep veins, acting as an auxiliary pump that propels oxygenated blood back up to the heart and reduces arterial stiffness throughout the body.",
+                "visual_prompt": "Close-up slow motion view of athletic shoes stepping rhythmically along a scenic paved jogging trail in a sunny botanical garden, vertical 9:16",
+                "environment": "Paved botanical garden fitness trail flanked by vibrant flowerbeds",
+                "characters": "Athletic walking shoes in rhythmic forward motion",
+                "objects": "Paved trail, athletic running shoes, sunlit garden border",
+                "camera_style": "Ground-level slow-motion tracking shot following moving footsteps",
+                "stock_query": "walking shoes path"
+            },
+            {
+                "claim": "Post-Meal Walking Flattens Blood Glucose Spikes",
+                "explanation": "Muscle contractions stimulate GLUT4 glucose transporter translocation to the sarcolemma independent of circulating insulin levels.",
+                "example": "A 15-minute postprandial stroll reduces peak glycemic excursion by up to 22 percent compared to sedentary resting.",
+                "narration": "Just ten to fifteen minutes of walking after meals activates non-insulin-mediated glucose transporters in skeletal muscle, pulling sugar straight from the bloodstream and preventing post-meal energy crashes.",
+                "visual_prompt": "Cinematic perspective of a person walking along an expansive scenic wooden boardwalk overlooking the ocean at sunset, soft warm light, vertical 9:16",
+                "environment": "Scenic coastal wooden boardwalk above sandy beach at golden hour",
+                "characters": "Individual enjoying a peaceful post-meal sunset stroll",
+                "objects": "Wooden boardwalk planks, distant ocean waves, glowing sunset sky",
+                "camera_style": "Wide cinematic tracking shot from behind the walker toward the sunset",
+                "stock_query": "walk ocean sunset"
+            }
+        ],
+        "closing": "Consistent daily walking rewires your brain, balances your metabolism, and protects your cardiovascular system."
     }
 }
 
 
 def _clean_user_prompt_topic(prompt: str) -> str:
-    """Extract clean subject topic by stripping prompt wrapper words and video creation commands."""
+    """Extract clean subject topic by stripping prompt wrapper words, counts, and video creation commands."""
     cleaned = prompt.strip().rstrip(".:!?-")
     
     # Strip leading command / creation directives
     cleaned = re.sub(r"(?i)^(create|make|generate|produce|build|give\s+me|write)\s+(a\s+|an\s+)?(new\s+)?(video|short|reel|tiktok|content|script|story|breakdown)?\s*(about|on|for|of)?\s*", "", cleaned).strip()
     cleaned = re.sub(r"(?i)^(tell\s+me\s+about|explain|teach\s+me\s+about|show\s+me)\s*", "", cleaned).strip()
-    cleaned = re.sub(r"(?i)^\d+\s+(fascinating\s+|surprising\s+|interesting\s+|mind-blowing\s+|amazing\s+|top\s+)?(facts|things|secrets|reasons|insights)\s+(about|on|for|of)?\s*", "", cleaned).strip()
+    cleaned = re.sub(r"(?i)^(top\s+)?\d+\s+(fascinating\s+|surprising\s+|interesting\s+|mind-blowing\s+|amazing\s+|best\s+|calming\s+|relaxing\s+)?(facts|things|secrets|reasons|insights|benefits|tips|ways|habits)\s+(about|on|for|of)?\s*", "", cleaned).strip()
+    cleaned = re.sub(r"(?i)^(the\s+)?(benefits|secrets|reasons|facts)\s+(about|on|for|of)\s*", "", cleaned).strip()
     cleaned = re.sub(r"(?i)^facts\s+(about|on|for|of)?\s*", "", cleaned).strip()
     
-    # Strip trailing video suffixes
+    # Strip trailing filler / suffixes
     cleaned = re.sub(r"(?i)\s+(video|short|reel|tiktok|script)$", "", cleaned).strip()
     cleaned = re.sub(r"(?i)\s+[—\-–]\s*\d+\s*(fascinating|surprising|interesting|mind-blowing)?\s*facts.*$", "", cleaned).strip()
     cleaned = re.sub(r"(?i)\s+[—\-–]\s*explained.*$", "", cleaned).strip()
     cleaned = re.sub(r"(?i)\s+explained.*$", "", cleaned).strip()
+    cleaned = re.sub(r"(?i)\s+(that\s+instantly\s+reduce\s+stress|you\s+need\s+to\s+know|for\s+university\s+students|for\s+beginners).*$", "", cleaned).strip()
     
     # Strip any remaining trailing 'video' if not alone
     if len(cleaned.split()) > 1 and cleaned.lower().endswith(" video"):
@@ -878,6 +1000,10 @@ def _match_knowledge_base(prompt: str) -> Optional[Dict[str, Any]]:
     p_clean = prompt.lower().strip()
     
     # Priority keyword mappings
+    if any(k in p_clean for k in ["relax", "stress", "calm", "nature fact", "forest bath"]):
+        return TOPIC_KNOWLEDGE_BASE.get("relaxing nature")
+    if any(k in p_clean for k in ["walking", "daily walk", "walk", "step count", "brisk walk", "stroll"]):
+        return TOPIC_KNOWLEDGE_BASE.get("walking benefits")
     if any(k in p_clean for k in ["rain", "rainy", "precipitation", "petrichor", "downpour"]):
         return TOPIC_KNOWLEDGE_BASE.get("rainy day")
     if any(k in p_clean for k in ["earth", "geography", "geology", "continent", "ocean", "mountain", "planet"]):
@@ -969,61 +1095,69 @@ def _synthesize_arbitrary_topic_facts(topic: str, target_count: int = 5, visual_
         ][:target_count]
 
     # Non-tech topics: Natural, Historical, Scientific, Geographical, Cultural
+    short_words = [w for w in topic.split() if len(w) > 2 and w.lower() not in {"the", "and", "for", "with", "that", "this"}]
+    short_noun = " ".join(short_words[:2]) or topic
+
     return [
         {
-            "claim": f"Origins, Discovery, and Physical Foundations of {topic}",
-            "explanation": f"The natural formation and historical origin of {topic} emerged from fundamental processes.",
-            "example": f"Documented scientific observations and historical records detail the earliest emergence of {topic}.",
-            "narration": f"{topic} originates from fundamental physical and environmental processes that shape its defining characteristics over time.",
-            "visual_prompt": f"Photorealistic documentary view showcasing the authentic natural setting and original foundations of {topic}, natural atmospheric lighting, rich landscape depth, realistic, vertical 9:16 composition",
-            "environment": f"Authentic natural environment representing {topic}",
-            "characters": f"The primary subject and physical features of {topic}",
-            "objects": f"Distinctive natural elements and authentic details of {topic}",
-            "camera_style": "Cinematic wide-angle establishing landscape shot"
+            "claim": f"Foundational Origins and Natural Evolution of {short_noun}",
+            "explanation": f"The emergence of {short_noun} stems from natural physical dynamics and historical conditions.",
+            "example": f"Documented scientific observations detail the earliest recorded emergence of this phenomenon.",
+            "narration": f"At the foundation of this subject, fundamental physical forces and environmental conditions establish its defining properties over time.",
+            "visual_prompt": f"Photorealistic documentary establishing view showing the natural setting and authentic physical foundations of {short_noun}, soft natural atmospheric light, vertical 9:16 composition",
+            "environment": f"Authentic natural environment representing {short_noun}",
+            "characters": f"The primary subject of {short_noun}",
+            "objects": f"Distinctive natural details and physical landscape of {short_noun}",
+            "camera_style": "Cinematic wide-angle establishing landscape shot",
+            "stock_query": f"{short_noun} landscape"
         },
         {
-            "claim": f"Core Governing Principles and Underlying Mechanisms of {topic}",
-            "explanation": f"Specific physical laws, biological systems, or historical forces govern how {topic} operates.",
-            "example": f"Empirical studies illustrate the exact dynamics and energy transfers driving {topic}.",
-            "narration": f"The dynamics of {topic} are governed by interconnected forces that drive its continuous activity and environmental interactions.",
-            "visual_prompt": f"Detailed photorealistic documentary shot capturing the core physical phenomenon and dynamic activity of {topic}, sharp focus, authentic textures, vertical 9:16 framing",
-            "environment": f"Dynamic natural environment highlighting {topic}",
-            "characters": f"The active physical elements of {topic}",
-            "objects": f"Characteristic structural details and natural phenomena of {topic}",
-            "camera_style": "Medium close-up shot with sharp subject focus and depth of field"
+            "claim": f"Core Governing Mechanisms Driving {short_noun}",
+            "explanation": f"Underlying biological and physical balances dictate how {short_noun} operates in real time.",
+            "example": f"Empirical measurements illustrate continuous energy transfers driving dynamic activity.",
+            "narration": f"The underlying mechanism functions through delicate systemic balances, where continuous energy exchanges and internal processes maintain equilibrium.",
+            "visual_prompt": f"Detailed cinematic close-up shot capturing dynamic activity and fine textures of {short_noun}, sharp focus, authentic documentary depth of field, vertical 9:16 framing",
+            "environment": f"Dynamic setting highlighting the activity of {short_noun}",
+            "characters": f"The active elements of {short_noun}",
+            "objects": f"Characteristic structural details and natural motion of {short_noun}",
+            "camera_style": "Medium close-up shot with sharp subject focus and depth of field",
+            "stock_query": f"{short_noun} closeup motion"
         },
         {
-            "claim": f"Remarkable Structural Diversity and Iconic Features of {topic}",
-            "explanation": f"Across different regions and environments, {topic} exhibits extraordinary physical diversity and iconic variations.",
-            "example": f"Documented specimens and geographical formations demonstrate wide variance across different ecosystems.",
-            "narration": f"Across different environments, {topic} displays remarkable structural diversity and distinct natural variations that highlight its multifaceted nature.",
-            "visual_prompt": f"Breathtaking photorealistic view of iconic landmarks and diverse structural formations associated with {topic}, vibrant natural colors, atmospheric depth, 9:16 composition",
-            "environment": f"Vibrant regional setting showcasing the diversity of {topic}",
-            "characters": f"Diverse physical formations of {topic}",
-            "objects": f"Iconic natural landmarks and distinctive features of {topic}",
-            "camera_style": "Slow panoramic tracking shot highlighting regional diversity"
+            "claim": f"Remarkable Structural Diversity Across {short_noun}",
+            "explanation": f"Across varying regions and ecosystems, {short_noun} exhibits extraordinary adaptations.",
+            "example": f"Documented specimens demonstrate wide variation tailored to specific climates and conditions.",
+            "narration": f"Across different environments, remarkable physical diversity emerges, revealing unique regional adaptations shaped by surrounding ecosystems.",
+            "visual_prompt": f"Breathtaking photorealistic view of diverse regional variations and iconic features of {short_noun}, vibrant natural colors, atmospheric depth, 9:16 composition",
+            "environment": f"Vibrant regional setting showcasing variations in {short_noun}",
+            "characters": f"Diverse physical formations of {short_noun}",
+            "objects": f"Distinctive features and natural elements of {short_noun}",
+            "camera_style": "Slow panoramic tracking shot highlighting regional diversity",
+            "stock_query": f"{short_noun} nature environment"
         },
         {
-            "claim": f"Environmental Interactions and Real-World Impact of {topic}",
-            "explanation": f"{topic} plays a vital role in shaping surrounding ecosystems, human history, and natural balances.",
-            "example": f"Interconnected cycles demonstrate the far-reaching influence of {topic} on global systems.",
-            "narration": f"{topic} actively interacts with surrounding ecosystems, influencing atmospheric and terrestrial balances across the broader landscape.",
-            "visual_prompt": f"Stunning aerial documentary perspective showing {topic} interacting with its surrounding ecosystem and broader landscape, golden hour sunlight, vertical 9:16 framing",
-            "environment": f"Expansive natural landscape showing the ecosystem of {topic}",
-            "characters": f"The broader environmental presence of {topic}",
-            "objects": f"Ecosystem elements, terrain contours, and atmospheric lighting",
-            "camera_style": "High-angle sweeping drone shot gliding across the landscape"
+            "claim": f"Ecosystem Interactions and Environmental Balance",
+            "explanation": f"{short_noun} actively shapes surrounding habitats, cycles, and natural balances.",
+            "example": f"Interconnected environmental cycles illustrate the far-reaching influence on nearby systems.",
+            "narration": f"In practical settings, continuous interaction with surrounding environments creates positive ripple effects, sustaining broader ecological and biological harmony.",
+            "visual_prompt": f"Stunning aerial perspective showing {short_noun} interacting with its surrounding natural landscape and open horizon, warm natural sunlight, vertical 9:16 framing",
+            "environment": f"Expansive natural landscape showing the ecosystem of {short_noun}",
+            "characters": f"The broader environmental presence of {short_noun}",
+            "objects": f"Ecosystem contours and atmospheric morning light",
+            "camera_style": "High-angle sweeping drone shot gliding across the landscape",
+            "stock_query": f"{short_noun} scenic aerial"
         },
         {
-            "claim": f"Modern Scientific Understanding and Global Significance of {topic}",
-            "explanation": f"Contemporary research continues to unveil new insights into the enduring importance of {topic}.",
-            "example": f"Recent discoveries provide deeper clarity on how {topic} will shape our understanding into the future.",
-            "narration": f"Scientific research continues to uncover deeper insights into the global importance and mechanisms of {topic}, inspiring ongoing discovery.",
-            "visual_prompt": f"Majestic cinematic documentary shot summarizing the enduring beauty and global significance of {topic}, dramatic lighting, breathtaking perspective, vertical 9:16 composition",
-            "environment": f"Iconic scenic setting reflecting the global significance of {topic}",
-            "characters": f"The enduring subject of {topic}",
+            "claim": f"Modern Scientific Discoveries and Enduring Significance",
+            "explanation": f"Contemporary research continues to unveil deeper insights into the broader importance of {short_noun}.",
+            "example": f"Recent technological breakthroughs provide greater clarity on how these dynamics will shape future understanding.",
+            "narration": f"Scientific research and modern observation continue to uncover deeper insights into this phenomenon, revealing lasting importance for our understanding of the natural world.",
+            "visual_prompt": f"Majestic cinematic documentary shot capturing the beauty and enduring significance of {short_noun}, dramatic natural lighting, vertical 9:16 composition",
+            "environment": f"Iconic scenic setting reflecting the significance of {short_noun}",
+            "characters": f"The enduring subject of {short_noun}",
             "objects": f"Scenic natural formations and pristine atmospheric conditions",
-            "camera_style": "Dramatic low-angle cinematic hero shot looking toward the horizon"
+            "camera_style": "Dramatic low-angle cinematic hero shot looking toward the horizon",
+            "stock_query": f"{short_noun} majestic documentary"
         }
     ][:target_count]
 
@@ -1103,6 +1237,8 @@ def _synthesize_domain_plan(
             claim=claim_text,
             explanation=f.get("explanation", ""),
             example=f.get("example", ""),
+            stock_query=f.get("stock_query") or " ".join([w for w in (claim_text + " " + topic_name).split() if len(w) > 3][:3]) or topic_name,
+            video_motion_prompt=f"Cinematic {f.get('camera_style', 'slow tracking shot')}, 4k ultra high definition documentary, perfectly stable framing, smooth motion, {v_prompt}",
         )
         scenes.append(sc)
         narrations.append(sc.narration)

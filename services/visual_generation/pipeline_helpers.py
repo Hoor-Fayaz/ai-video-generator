@@ -62,14 +62,17 @@ def generate_scene_visuals(
     width: int = 1080,
     height: int = 1920,
     status_callback: Optional[Callable[[dict], None]] = None,
+    visual_provider: Optional[str] = None,
 ) -> tuple[list[str], list, dict]:
     """
-    Generate images for all scenes, persist SceneAsset records, update plan.
+    Generate visuals (video clips or images) for all scenes, persist SceneAsset records, update plan.
 
-    Returns (image_paths, updated_scenes, visual_status).
+    Returns (media_paths, updated_scenes, visual_status).
     """
     os.makedirs(base_dir, exist_ok=True)
-    service = VisualGenerationService()
+    from . import get_visual_provider
+    prov = get_visual_provider(force=visual_provider) if visual_provider else None
+    service = VisualGenerationService(provider=prov)
     visual_status = init_visual_status(scenes)
     visual_status["provider"] = service.provider.name
 
@@ -130,6 +133,13 @@ def generate_scene_visuals(
         output_path = scene_image_path(base_dir, scene_num)
         consistency = build_consistency_context(scenes, scene_num)
 
+        # Parse duration for scene motion video
+        dur_val = scene.get("duration") or 5
+        try:
+            dur_float = float(dur_val)
+        except Exception:
+            dur_float = 5.0
+
         request = VisualGenerationRequest(
             scene_number=scene_num,
             visual_prompt=v_prompt,
@@ -145,6 +155,10 @@ def generate_scene_visuals(
             topic=topic,
             claim=claim,
             narration=narration,
+            duration=dur_float,
+            stock_query=scene.get("stock_query", ""),
+            video_motion_prompt=scene.get("video_motion_prompt", ""),
+            media_type="auto",
         )
 
         result = service.generate_scene(request)
@@ -153,14 +167,28 @@ def generate_scene_visuals(
         scene_copy["visual_prompt"] = v_prompt
         scene_copy["visual_description"] = v_prompt
         if result.success:
-            scene_copy["image_path"] = output_path
-            scene_copy["image_url"] = scene_image_url(video_id, scene_num)
+            actual_path = result.output_path
+            is_video = actual_path.lower().endswith((".mp4", ".mov", ".webm")) or result.media_type == "video"
+            ext = os.path.splitext(actual_path)[1]
+
+            scene_copy["image_path"] = actual_path
+            scene_copy["media_path"] = actual_path
+            scene_copy["media_type"] = "video" if is_video else "image"
+            if is_video:
+                scene_copy["video_path"] = actual_path
+                scene_copy["video_url"] = f"/assets/video_{video_id}/scene_{scene_num:03d}{ext}"
+                scene_copy["image_url"] = scene_copy["video_url"]
+            else:
+                scene_copy["image_url"] = scene_image_url(video_id, scene_num)
+                if result.metadata.get("video_clip_path"):
+                    scene_copy["video_path"] = result.metadata["video_clip_path"]
+
             scene_copy["visual_status"] = "completed"
             scene_copy["is_mock_visual"] = result.is_mock
-            image_paths.append(output_path)
+            image_paths.append(actual_path)
 
             asset.status = "completed"
-            asset.image_path = output_path
+            asset.image_path = actual_path
             asset.provider = result.provider_name
             asset.is_mock = result.is_mock
             asset.metadata_json = result.metadata
@@ -260,7 +288,10 @@ def regenerate_single_scene(
         output_path=output_path,
         topic=topic,
         claim=claim,
-        narration=narration,
+        duration=float(scene.get("duration") or 5.0),
+        stock_query=scene.get("stock_query", ""),
+        video_motion_prompt=scene.get("video_motion_prompt", ""),
+        media_type="auto",
     )
 
     result = service.generate_scene(request)
@@ -270,8 +301,12 @@ def regenerate_single_scene(
         db_session.commit()
         raise RuntimeError(result.error_message)
 
+    actual_path = result.output_path
+    is_video = actual_path.lower().endswith((".mp4", ".mov", ".webm")) or result.media_type == "video"
+    ext = os.path.splitext(actual_path)[1]
+
     asset.status = "completed"
-    asset.image_path = output_path
+    asset.image_path = actual_path
     asset.provider = result.provider_name
     asset.is_mock = result.is_mock
     asset.metadata_json = result.metadata
@@ -279,8 +314,17 @@ def regenerate_single_scene(
     db_session.commit()
 
     updated = dict(scene)
-    updated["image_path"] = output_path
-    updated["image_url"] = scene_image_url(video_id, scene_number)
+    updated["image_path"] = actual_path
+    updated["media_path"] = actual_path
+    updated["media_type"] = "video" if is_video else "image"
+    if is_video:
+        updated["video_path"] = actual_path
+        updated["video_url"] = f"/assets/video_{video_id}/scene_{scene_number:03d}{ext}"
+        updated["image_url"] = updated["video_url"]
+    else:
+        updated["image_url"] = scene_image_url(video_id, scene_number)
+        if result.metadata.get("video_clip_path"):
+            updated["video_path"] = result.metadata["video_clip_path"]
     updated["visual_status"] = "completed"
     updated["is_mock_visual"] = result.is_mock
     return updated

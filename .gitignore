@@ -27,3 +27,6 @@ assets/
 
 # Generated test files
 test_generation.png
+test_diversity/
+*.mp4
+

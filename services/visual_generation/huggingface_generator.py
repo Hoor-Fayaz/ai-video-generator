@@ -24,6 +24,19 @@ def _get_model_id() -> str:
     return os.getenv("HUGGINGFACE_MODEL", "black-forest-labs/FLUX.1-schnell").strip()
 
 
+def _is_flux_model(model_id: str) -> bool:
+    """FLUX models don't support negative_prompt."""
+    return "flux" in model_id.lower()
+
+
+# Ordered fallback chain of free HuggingFace models
+_FALLBACK_MODELS = [
+    "black-forest-labs/FLUX.1-schnell",
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    "runwayml/stable-diffusion-v1-5",
+]
+
+
 def _redact_token(text: str) -> str:
     """Redact any API tokens or bearer headers from error strings."""
     if not text:
@@ -111,35 +124,47 @@ class HuggingFaceGenerator(VisualGenerationProvider):
         print(f"  Validation result: {'PASSED' if is_valid else f'REPAIRED ({val_reason})'}")
 
         try:
-            model_id = _get_model_id()
-            client = InferenceClient(
-                provider="auto",
-                api_key=api_key,
-            )
+            primary_model = _get_model_id()
+            client = InferenceClient(provider="auto", api_key=api_key)
 
+            # 9:16 vertical resolution — closest supported sizes for major models
             gen_width = 576
             gen_height = 1024
 
-            try:
-                img = client.text_to_image(
-                    prompt=prompt,
-                    negative_prompt=neg_prompt,
-                    model=model_id,
-                    width=gen_width,
-                    height=gen_height,
-                )
-            except Exception as e_prov:
-                err_text = str(e_prov).lower()
-                if "402" in str(e_prov) or "payment required" in err_text or "credits" in err_text or "quota" in err_text:
-                    print(f"[Hugging Face] Provider credits unavailable ({str(e_prov)[:60]}), using free serverless HF endpoint...")
-                    client = InferenceClient(api_key=api_key)
-                    img = client.text_to_image(
+            img = None
+            last_error = None
+            models_to_try = [primary_model] + [m for m in _FALLBACK_MODELS if m != primary_model]
+
+            for model_id in models_to_try:
+                try:
+                    kwargs = dict(
                         prompt=prompt,
-                        negative_prompt=neg_prompt,
-                        model="stabilityai/stable-diffusion-xl-base-1.0",
+                        model=model_id,
+                        width=gen_width,
+                        height=gen_height,
                     )
-                else:
-                    raise e_prov
+                    # FLUX models do not support negative_prompt
+                    if not _is_flux_model(model_id) and neg_prompt:
+                        kwargs["negative_prompt"] = neg_prompt
+
+                    print(f"[HuggingFace] Generating scene {request.scene_number} with {model_id}...")
+                    img = client.text_to_image(**kwargs)
+                    if img and isinstance(img, Image.Image):
+                        print(f"[HuggingFace] ✓ Generated with {model_id}")
+                        break
+                except Exception as e_m:
+                    last_error = str(e_m)
+                    err_lower = last_error.lower()
+                    if any(k in err_lower for k in ["402", "payment", "credits", "quota", "rate limit", "503"]):
+                        print(f"[HuggingFace] {model_id} unavailable ({last_error[:60]}), trying next model...")
+                        # Switch to serverless client for next attempt
+                        client = InferenceClient(api_key=api_key)
+                        continue
+                    else:
+                        raise e_m
+
+            if img is None:
+                raise RuntimeError(f"All HuggingFace models failed. Last error: {last_error}")
 
             if not isinstance(img, Image.Image):
                 return VisualGenerationResult(

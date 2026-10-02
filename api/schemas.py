@@ -30,6 +30,12 @@ class Scene(BaseModel):
     visual_description: Optional[str] = None  # legacy alias
     image_path: Optional[str] = None
     image_url: Optional[str] = None
+    video_path: Optional[str] = None
+    video_url: Optional[str] = None
+    media_path: Optional[str] = None
+    media_type: Optional[str] = "image"  # "image" or "video"
+    stock_query: Optional[str] = None
+    video_motion_prompt: Optional[str] = None
     visual_status: Optional[str] = None  # pending, generating, completed, failed
     is_mock_visual: Optional[bool] = None
     # Informational unit fields for high-density educational content
@@ -312,14 +318,16 @@ class ScheduleBatchResponse(BaseModel):
 class ApproveAndPublishRequest(BaseModel):
     """
     Payload for the Approve & Publish action.
-    selected_platforms: list of platform strings (e.g. ["instagram", "youtube"]).
+    selected_platforms: list of platform strings (e.g. ["instagram", "youtube", "tiktok"]).
     youtube_privacy: public | unlisted | private (default: public)
     tiktok_privacy: PUBLIC_TO_EVERYONE | MUTUAL_FOLLOW_FRIENDS | SELF_ONLY
+    instagram_share_to_feed: bool = True
     use_sandbox: If True, uses mock provider for safe zero-credential testing.
     """
-    selected_platforms: List[str]   # e.g. ["instagram", "tiktok"]
+    selected_platforms: List[str]   # e.g. ["instagram", "youtube", "tiktok"]
     youtube_privacy: str = "public"
     tiktok_privacy: str = "PUBLIC_TO_EVERYONE"
+    instagram_share_to_feed: bool = True
     use_sandbox: bool = False        # Safe test mode uses mock provider
 
 
@@ -347,3 +355,12 @@ class ApproveAndPublishResponse(BaseModel):
     publications: List[VideoPublicationResponse]
     summary: Dict[str, str]   # {"instagram": "PUBLISHED", "tiktok": "FAILED", "youtube": "NOT_SELECTED"}
     message: str
+
+
+class SocialAccountManualToken(BaseModel):
+    platform: str
+    access_token: str
+    account_name: Optional[str] = None
+    account_handle: Optional[str] = None
+    refresh_token: Optional[str] = None
+    expires_in: Optional[int] = None

@@ -9,7 +9,7 @@ from PIL import Image
 
 @dataclass
 class VisualGenerationRequest:
-    """Input for generating a single scene image."""
+    """Input for generating a single scene visual (image or video)."""
 
     scene_number: int
     visual_prompt: str
@@ -26,6 +26,10 @@ class VisualGenerationRequest:
     claim: str = ""
     narration: str = ""
     negative_prompt: str = ""
+    duration: float = 5.0
+    stock_query: str = ""
+    video_motion_prompt: str = ""
+    media_type: str = "auto"  # "auto", "video", "image"
 
 
 @dataclass
@@ -37,7 +41,36 @@ class VisualGenerationResult:
     provider_name: str
     is_mock: bool = False
     error_message: Optional[str] = None
+    media_type: str = "image"  # "video" or "image"
+    duration: float = 0.0
     metadata: dict = field(default_factory=dict)
+
+
+def validate_generated_video(
+    video_path: str,
+    min_bytes: int = 10000,
+) -> Tuple[bool, Optional[str]]:
+    """Validate generated video clip existence and non-zero size."""
+    if not os.path.exists(video_path):
+        return False, f"Video file does not exist: {video_path}"
+    file_size = os.path.getsize(video_path)
+    if file_size < min_bytes:
+        return False, f"Video file size too small ({file_size} bytes < {min_bytes} bytes)"
+    return True, None
+
+
+def validate_generated_media(
+    media_path: str,
+    target_width: int = 1080,
+    target_height: int = 1920,
+) -> Tuple[bool, Optional[str]]:
+    """Validate media (either video or image)."""
+    if not os.path.exists(media_path):
+        return False, f"Media file does not exist: {media_path}"
+    ext = os.path.splitext(media_path)[1].lower()
+    if ext in [".mp4", ".mov", ".webm", ".mkv"]:
+        return validate_generated_video(media_path)
+    return validate_generated_image(media_path, target_width, target_height)
 
 
 def validate_generated_image(

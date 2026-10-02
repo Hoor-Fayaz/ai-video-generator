@@ -14,7 +14,7 @@ from services.tts.generator import generate_voiceover
 from services.subtitles.transcriber import generate_subtitles
 from services.video_processing.composer import compose_video
 from services.visual_generation import VisualGenerationService, get_visual_provider
-from services.visual_generation.base import validate_generated_image
+from services.visual_generation.base import validate_generated_image, validate_generated_media
 from services.visual_generation.pipeline_helpers import (
     generate_scene_visuals,
     regenerate_single_scene,
@@ -227,7 +227,10 @@ def run_qa_validation(video_id: int, db: Session) -> bool:
 
     # Check 2: Playability & Duration
     try:
-        from moviepy.editor import VideoFileClip
+        try:
+            from moviepy import VideoFileClip
+        except ImportError:
+            from moviepy.editor import VideoFileClip
         clip = VideoFileClip(video_path)
         duration = clip.duration
         resolution = f"{clip.size[0]}x{clip.size[1]}"
@@ -254,7 +257,7 @@ def run_qa_validation(video_id: int, db: Session) -> bool:
     has_scenes = bool(plan.get("scenes"))
     scenes = plan.get("scenes", [])
     scene_images_ok = all(
-        s.get("image_path") and validate_generated_image(s.get("image_path", ""))[0]
+        (s.get("image_path") or s.get("video_path")) and validate_generated_media(s.get("image_path") or s.get("video_path", ""))[0]
         for s in scenes
     ) if scenes else False
 
@@ -377,6 +380,7 @@ def run_video_pipeline(video_id: int):
                 width=width,
                 height=height,
                 status_callback=_persist_visual_status,
+                visual_provider=video.visual_provider,
             )
 
             plan["scenes"] = updated_scenes
@@ -405,7 +409,7 @@ def run_video_pipeline(video_id: int):
             video.generation_stage = "SUBTITLES"
             attempt.stage = "SUBTITLES"
             db.commit()
-            srt_path = generate_subtitles(audio_path, base_dir, "voiceover", fallback_text=narration)
+            srt_path = generate_subtitles(audio_path, base_dir, "voiceover", fallback_text=narration, width=width, height=height)
             video.subtitles_path = srt_path
             db.commit()
 
@@ -417,8 +421,11 @@ def run_video_pipeline(video_id: int):
             durations = _get_scene_durations(updated_scenes)
             if audio_path and os.path.exists(audio_path):
                 try:
-                    import moviepy.editor as mp_ed
-                    a_clip = mp_ed.AudioFileClip(audio_path)
+                    try:
+                        from moviepy import AudioFileClip
+                    except ImportError:
+                        from moviepy.editor import AudioFileClip
+                    a_clip = AudioFileClip(audio_path)
                     a_dur = a_clip.duration
                     a_clip.close()
                     if a_dur and len(durations) > 0:
@@ -595,8 +602,10 @@ def _do_publish_platform(
         db.commit()
         return
 
-    # Proactive token expiration check & refresh before calling provider
-    if account.encrypted_refresh_token and not use_sandbox:
+    effective_sandbox = use_sandbox or (account is not None and getattr(account, "is_mock", False))
+
+    # Proactive token expiration check & refresh before calling provider (only for real accounts)
+    if account.encrypted_refresh_token and not effective_sandbox and not account.is_mock:
         now = datetime.utcnow()
         needs_refresh = False
         if account.token_expires_at:
@@ -671,11 +680,11 @@ def _do_publish_platform(
         return
 
     try:
-        provider = SocialProviderRegistry.get_provider(platform, use_sandbox=use_sandbox)
+        provider = SocialProviderRegistry.get_provider(platform, use_sandbox=effective_sandbox)
         result = provider.publish_video(access_token=access_token, video_path=video_path, metadata=metadata)
 
         # Reactive refresh: handle 401 / stale token case safely if initial call failed
-        if not result.get("success") and account.encrypted_refresh_token and not use_sandbox:
+        if not result.get("success") and account.encrypted_refresh_token and not effective_sandbox:
             err_msg = (result.get("error") or "").lower()
             if "401" in err_msg or "invalid authentication" in err_msg or "unauthorized" in err_msg:
                 try:
@@ -806,21 +815,34 @@ def approve_and_publish_video(
             else:
                 connected_account = acct_q.filter(models.SocialAccount.is_mock == False).first()
                 if not connected_account:
-                    connected_account = acct_q.first()  # fallback to sandbox
+                    connected_account = acct_q.filter(models.SocialAccount.is_mock == True).first()
 
-            if connected_account:
-                pub = models.VideoPublication(
-                    video_id=video.id, platform=platform,
-                    social_account_id=connected_account.id,
-                    status=models.PublicationStatus.QUEUED, attempt_count=0,
+            if not connected_account:
+                # Auto-provision sandbox account so publishing can proceed smoothly
+                mock_p = SocialProviderRegistry.get_provider(platform, use_sandbox=True)
+                tks = mock_p.exchange_code_for_tokens("auto_code", "http://localhost")
+                info = mock_p.get_account_info(tks["access_token"])
+                connected_account = models.SocialAccount(
+                    user_id=1,
+                    platform=platform,
+                    account_id=info.get("account_id"),
+                    account_name=info.get("account_name"),
+                    account_handle=info.get("account_handle"),
+                    encrypted_access_token=encrypt_token(tks["access_token"]),
+                    encrypted_refresh_token=encrypt_token(tks.get("refresh_token")),
+                    status="ACTIVE",
+                    is_mock=True,
+                    metadata_json={"avatar_url": info.get("avatar_url"), "profile_url": info.get("profile_url")}
                 )
-            else:
-                pub = models.VideoPublication(
-                    video_id=video.id, platform=platform, social_account_id=None,
-                    status=models.PublicationStatus.FAILED,
-                    error_message=f"No active {platform} account found. Connect an account in Social Accounts.",
-                    attempt_count=0,
-                )
+                db.add(connected_account)
+                db.commit()
+                db.refresh(connected_account)
+
+            pub = models.VideoPublication(
+                video_id=video.id, platform=platform,
+                social_account_id=connected_account.id,
+                status=models.PublicationStatus.QUEUED, attempt_count=0,
+            )
             db.add(pub)
             pub_records.append(pub)
 
@@ -1293,13 +1315,18 @@ def _cleanup_expired_pkce_verifiers(ttl_seconds: int = 900) -> None:
 
 @app.get("/social/oauth/authorize/{platform}")
 @app.get("/social/oauth/{platform}/authorize")
+@app.get("/social/oauth/login/{platform}")
+@app.get("/social/oauth/{platform}/login")
 def get_social_oauth_authorization_url(
     platform: str,
+    request: Request,
     redirect_uri: Optional[str] = Query(None, description="Redirect URI for OAuth callback"),
-    sandbox: bool = Query(False, description="Use sandbox mock provider instead of official API")
+    sandbox: bool = Query(False, description="Use sandbox mock provider instead of official API"),
+    auto_redirect: Optional[bool] = Query(None, description="Redirect directly to provider auth URL")
 ):
     """
     Generates official OAuth consent URL (or sandbox redirect) for the platform.
+    If called from a browser or /login endpoint, automatically redirects to the consent page.
     """
     try:
         if not redirect_uri:
@@ -1319,6 +1346,12 @@ def get_social_oauth_authorization_url(
             auth_url = provider.get_authorization_url(state=csrf_state, redirect_uri=redirect_uri, code_verifier=code_verifier)
         else:
             auth_url = provider.get_authorization_url(state=csrf_state, redirect_uri=redirect_uri)
+
+        is_browser = "text/html" in request.headers.get("accept", "")
+        should_redirect = auto_redirect if auto_redirect is not None else (is_browser or "login" in request.url.path)
+        if should_redirect:
+            from starlette.responses import RedirectResponse
+            return RedirectResponse(auth_url, status_code=307)
 
         return {"authorization_url": auth_url, "state": csrf_state, "platform": platform, "is_sandbox": sandbox}
     except Exception as e:
@@ -1451,12 +1484,13 @@ def handle_social_oauth_callback(
         db.commit()
         db.refresh(account)
 
+        dashboard_url = os.getenv("DASHBOARD_URL", "http://localhost:8501")
         if is_browser_request:
             from starlette.responses import HTMLResponse
             return HTMLResponse(
                 f"""<!DOCTYPE html><html>
                 <head>
-                    <meta http-equiv="refresh" content="1;url=http://localhost:5173/?tab=social&connected={platform.lower()}">
+                    <meta http-equiv="refresh" content="2;url={dashboard_url}">
                     <title>{platform.title()} Connected</title>
                 </head>
                 <body style="background:#0F0F12;color:#F7F4F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
@@ -1464,7 +1498,7 @@ def handle_social_oauth_callback(
                         <div style="font-size:36px;margin-bottom:12px;">🎉</div>
                         <h2 style="font-size:20px;font-weight:700;margin:0 0 8px 0;color:#F7F4F5;">{platform.title()} Connected!</h2>
                         <p style="font-size:13px;color:#A9A4AA;margin:0 0 20px 0;">Account <strong>{account.account_handle or account.account_name}</strong> has been linked successfully.</p>
-                        <a href="http://localhost:5173/?tab=social&connected={platform.lower()}" style="display:inline-block;background:#C62845;color:#FFF;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Return to Studio</a>
+                        <a href="{dashboard_url}" style="display:inline-block;background:#C62845;color:#FFF;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Return to Studio Dashboard</a>
                     </div>
                 </body></html>"""
             )
@@ -1481,13 +1515,14 @@ def handle_social_oauth_callback(
         }
     except Exception as e:
         err_detail = f"OAuth connection failed: {str(e)}"
+        dashboard_url = os.getenv("DASHBOARD_URL", "http://localhost:8501")
         if is_browser_request:
             from starlette.responses import HTMLResponse
             return HTMLResponse(
                 f"""<!DOCTYPE html><html><body style="background:#0F0F12;color:#F7F4F5;font-family:sans-serif;padding:40px;text-align:center;">
                 <div style="max-width:500px;margin:auto;background:#15151B;padding:30px;border-radius:12px;border:1px solid #5B2129;">
                 <h2 style="color:#E05260;">Connection Error</h2><p style="font-size:13px;color:#F7F4F5;">{err_detail}</p>
-                <a href="http://localhost:5173/?tab=social" style="color:#FFF;background:#C62845;padding:10px 20px;border-radius:8px;text-decoration:none;">Back to Studio</a>
+                <a href="{dashboard_url}" style="color:#FFF;background:#C62845;padding:10px 20px;border-radius:8px;text-decoration:none;">Back to Studio Dashboard</a>
                 </div></body></html>""",
                 status_code=400
             )
@@ -1538,6 +1573,52 @@ def connect_sandbox_account(
         "avatar_url": info.get("avatar_url"),
         "profile_url": info.get("profile_url")
     }
+    account.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(account)
+
+    return account
+
+
+@app.post("/social/accounts/manual-token", response_model=schemas.SocialAccountResponse)
+def connect_manual_token_account(
+    payload: schemas.SocialAccountManualToken,
+    db: Session = Depends(database.get_db)
+):
+    """
+    Connects an account directly via pre-generated access token / page token.
+    Useful for Meta Graph API explorer tokens, long-lived tokens, or YouTube developer tokens.
+    """
+    platform = payload.platform.lower().strip()
+    if platform not in SocialProviderRegistry.SUPPORTED_PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+
+    acc_name = payload.account_name or f"{platform.capitalize()} Creator Account"
+    acc_handle = payload.account_handle or f"@{platform}_creator"
+    account_id = f"manual_{platform}_{int(time.time())}"
+
+    account = db.query(models.SocialAccount).filter(
+        models.SocialAccount.platform == platform,
+        models.SocialAccount.is_mock == False
+    ).first()
+
+    if not account:
+        account = models.SocialAccount(
+            user_id=1,
+            platform=platform,
+            account_id=account_id,
+            is_mock=False
+        )
+        db.add(account)
+
+    account.account_name = acc_name
+    account.account_handle = acc_handle
+    account.encrypted_access_token = encrypt_token(payload.access_token)
+    if payload.refresh_token:
+        account.encrypted_refresh_token = encrypt_token(payload.refresh_token)
+    if payload.expires_in:
+        account.token_expires_at = datetime.utcnow() + timedelta(seconds=payload.expires_in)
+    account.status = "ACTIVE"
     account.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(account)
